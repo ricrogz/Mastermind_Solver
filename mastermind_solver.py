@@ -24,9 +24,8 @@ def read_file(fname):
         clue, right_values, in_place = line.split()
         clue = tuple(map(int, clue))
         values.update(clue)
-        right_values = int(right_values)
         in_place = int(in_place)
-        assert(right_values >= in_place)
+        right_values = int(right_values) + in_place
         assert(clue not in clue_lines)
         clue_lines[clue] = right_values, in_place
     solution_size = len(clue)
