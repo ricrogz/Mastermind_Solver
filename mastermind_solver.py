@@ -22,14 +22,14 @@ def read_file(fname):
     clue_lines = dict()
     for line in data:
         clue, right_values, in_place = line.split()
-        clue = tuple(map(int, clue))
+        clue = tuple(clue)
         values.update(clue)
         in_place = int(in_place)
         right_values = int(right_values) + in_place
         assert(clue not in clue_lines)
         clue_lines[clue] = right_values, in_place
     solution_size = len(clue)
-    return values, solution_size, clue_lines
+    return tuple(values), solution_size, clue_lines
 
 
 def init_model_vars(solution_size, values):
@@ -38,45 +38,47 @@ def init_model_vars(solution_size, values):
     model = pulp.LpProblem('mastermind', pulp.LpMinimize)
     model += 0  # No objective function
 
-    # Create model flags and auxiliary colors
+    # Create model flags and auxiliary options
     flags = pulp.LpVariable.dicts("Flags", (range(solution_size), values), 0, 1, pulp.LpInteger)
-    colors = pulp.LpVariable.dicts("Color", (values, ), 0, 1, pulp.LpInteger)
+    options = pulp.LpVariable.dicts("Option", (values, ), 0, 1, pulp.LpInteger)
 
     # Allow only 1 value per cell and 0 in empty spaces
     for i in range(solution_size):
         model += pulp.lpSum([flags[i][v] for v in values]) == 1, 'Cell_{:02d}_v'.format(i)
 
-    # Allow color in cells only if color exists
+    # Allow Option in cells only if Option exists
     for v in values:
-        model += pulp.lpSum([flags[i][v] for i in range(solution_size)]) >= colors[v],\
-            'Color_min_{:02d}'.format(v)
-        model += pulp.lpSum([flags[i][v] for i in range(solution_size)]) <= solution_size * colors[v],\
-            'Color_max_{:02d}'.format(v)
+        model += pulp.lpSum([flags[i][v] for i in range(solution_size)]) >= options[v],\
+            'Option_min_{:02d}'.format(v)
+        model += pulp.lpSum([flags[i][v] for i in range(solution_size)]) <= solution_size * options[v],\
+            'Option_max_{:02d}'.format(v)
 
-    return model, flags, colors
+    return model, flags, options
 
 
-def parse_clue(model, flags, colors, clue, right_values, in_place):
-    model += pulp.lpSum([colors[v] for v in clue]) == right_values, 'colors_in_{}'.format(str(clue))
+def parse_clue(model, flags, options, clue, right_values, in_place):
+    model += pulp.lpSum([options[v] for v in clue]) == right_values, 'options_in_{}'.format(str(clue))
     model += pulp.lpSum([flags[i][v] for i, v in enumerate(clue)]) == in_place, \
         'in_place_{}_in_{}'.format(in_place, str(clue))
     return model
 
 
-def get_solution(flags, solution_size, values):
+def get_solution(flags, solution_size, mapped_values, values):
     solution = ['-'] * solution_size
     for i in range(solution_size):
-        for v in values:
+        for v in mapped_values:
             if pulp.value(flags[i][v]) == 1:
-                solution[i] = str(v)
+                solution[i] = values[v]
                 break
     return tuple(solution)
 
 
 def solve_mastermind(values, solution_size, clue_lines):
-    model, flags, colors = init_model_vars(solution_size, values)
+    mapped_values = range(len(values))
+    model, flags, options = init_model_vars(solution_size, mapped_values)
     for clue, score in clue_lines.items():
-        parse_clue(model, flags, colors, clue, *score)
+        mapped_clue = tuple([values.index(k) for k in clue])
+        parse_clue(model, flags, options, mapped_clue, *score)
 
     # Debugging: Write the lp problem model
     if DEBUG:
@@ -91,10 +93,10 @@ def solve_mastermind(values, solution_size, clue_lines):
             break
 
         # provide the solution
-        yield get_solution(flags, solution_size, values)
+        yield get_solution(flags, solution_size, mapped_values, values)
 
         # Add a new constraint to forbid finding this solution again
-        model += pulp.lpSum([flags[i][v] for i in range(solution_size) for v in values
+        model += pulp.lpSum([flags[i][v] for i in range(solution_size) for v in mapped_values
                             if pulp.value(flags[i][v]) == 1]) <= solution_size - 1
 
 
